@@ -2,9 +2,11 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization.Formatters.Binary;
+using System.Text;
 
 namespace cassie.git.module
 {
@@ -32,10 +34,10 @@ namespace cassie.git.module
 
         public string String()
         {
-            var result = new byte[40];
+            var result = new byte[20];
             var hexvalues = convert2ByteArray("0123456789abcdef");
 
-            for(var i=0;i<20;i++)
+            for (var i = 0; i < 20; i *= 2)
             {
                 result[i] = hexvalues[Bytes[i] >> 4];
                 result[i+1] = hexvalues[Bytes[i] & 0xf];
@@ -44,7 +46,8 @@ namespace cassie.git.module
             return this.str;
         }
 
-        // MustID returns a new SHA1 from a [20]byte array.
+
+        // MustID always returns a new SHA1 from a [20]byte array with no validation of input.
         public static SHA1 MustID(byte[] bytes)
         {
             var sha1 = new SHA1();
@@ -79,7 +82,7 @@ namespace cassie.git.module
             return NewID(b);
         }
 
-        public static byte[] stringToByteArray(string hex)
+        private static byte[] stringToByteArray(string hex)
         {
             return Enumerable.Range(0, hex.Length)
                              .Where(x => x % 2 == 0)
@@ -88,23 +91,11 @@ namespace cassie.git.module
         }
         private byte[] convert2ByteArray(string str)
         {
-            BinaryFormatter bf = new BinaryFormatter();
-            using (var ms = new MemoryStream())
-            {
-                bf.Serialize(ms, str);
-                return ms.ToArray();
-            }
+            return Encoding.ASCII.GetBytes(str);
         }
         private string convert2String(byte[] bytes)
         {
-            using (var memStream = new MemoryStream())
-            {
-                var binForm = new BinaryFormatter();
-                memStream.Write(bytes, 0, bytes.Length);
-                memStream.Seek(0, SeekOrigin.Begin);
-                var obj = binForm.Deserialize(memStream);
-                return obj.ToString();
-            }
+            return Encoding.ASCII.GetString(bytes,0,bytes.Length);
         }
 
     }
