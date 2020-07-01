@@ -3,9 +3,7 @@
 // license that can be found in the LICENSE file.
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 
 namespace cassie.git.module
@@ -19,30 +17,31 @@ namespace cassie.git.module
         private string str;
 
         public bool Equal(string str) {
-            return this.str == str;
+            var temp = this.String();
+            return this.String() == str;
         }
 
         public bool Equal(byte[] bytes)
         {
-            return this.Bytes == bytes;
+            return Enumerable.SequenceEqual(this.Bytes, bytes);
         }
 
         public bool Equal(SHA1 sha1)
         {
-            return this.Bytes == sha1.Bytes;
+            return Enumerable.SequenceEqual(this.Bytes, sha1.Bytes);
         }
 
         public string String()
         {
-            var result = new byte[20];
+            var result = new List<byte>();
             var hexvalues = convert2ByteArray("0123456789abcdef");
 
-            for (var i = 0; i < 20; i *= 2)
+            for (var i = 0; i < 20; i ++)
             {
-                result[i] = hexvalues[Bytes[i] >> 4];
-                result[i+1] = hexvalues[Bytes[i] & 0xf];
+                result.Add(hexvalues[Bytes[i] >> 4]);
+                result.Add(hexvalues[Bytes[i] & 0xf]);
             }
-            this.str = convert2String(result);
+            this.str = convert2String(result.ToArray());
             return this.str;
         }
 
@@ -62,7 +61,7 @@ namespace cassie.git.module
         public static SHA1 NewID(byte[] bytes)
         {
             if(bytes.Length != 20){
-                throw new LenghNotMatchException("byte array length must equal 20");
+                throw new LengthNotMatchException("byte array length must equal 20");
             }
             return MustID(bytes);
         }
@@ -76,7 +75,7 @@ namespace cassie.git.module
         public static SHA1 NewIDFromString(string s){
             s = s.Trim();
             if(s.Length != 40){
-                throw new LenghNotMatchException("byte array length must equal 40");
+                throw new LengthNotMatchException("byte array length must equal 40");
             }
             var b = stringToByteArray(s);
             return NewID(b);

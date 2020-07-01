@@ -2,13 +2,13 @@ using System;
 
 namespace cassie.git.module
 {
-    public class LenghNotMatchException : Exception
+    public class LengthNotMatchException : Exception
     {
-        public LenghNotMatchException(){}
+        public LengthNotMatchException(){}
 
-        public LenghNotMatchException(string message) : base(message){}
+        public LengthNotMatchException(string message) : base(message){}
 
-        public LenghNotMatchException(string message, Exception inner)
+        public LengthNotMatchException(string message, Exception inner)
         : base(message, inner)
         {
         }
