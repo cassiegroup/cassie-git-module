@@ -58,11 +58,11 @@ namespace cassie.git.module
             try
             {
                 // Make sure directory exists
-                if (Directory.Exists(path) == false)
-                    throw new Exception(string.Format("Directory {0} does not exist, so permissions cannot be set.", path));
+                if (Directory.Exists(path)) return true;
 
                 // Get directory access info
-                var di = new DirectoryInfo(path);
+                var di = Directory.CreateDirectory(path);
+                
                 
                 var dSecurity = di.GetAccessControl();
 
@@ -71,7 +71,26 @@ namespace cassie.git.module
 
                 // Set the access control
                 di.SetAccessControl(dSecurity);
+                return true;
 
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        public static bool Mkfile(string path)
+        {
+            try
+            {
+                // Make sure directory exists
+                if (File.Exists(path)) return true;
+
+                var directory = System.IO.Path.GetDirectoryName(path);
+                if(!Directory.Exists(directory)) Mkdir(directory);
+                // Get directory access info
+                if(!File.Exists(path)) File.Create(path);
                 return true;
 
             }

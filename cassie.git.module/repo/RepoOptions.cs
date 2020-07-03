@@ -288,4 +288,158 @@ namespace cassie.git.module.repo
         // The default timeout duration will be used when not supplied.
         public Int64 Timeout { get; set; }
     }
+    // RawDiffFormat is the format of a raw diff.
+    public enum RawDiffFormat
+    {
+        RawDiffNormal,
+        RawDiffPatch
+    }
+
+    public class RawDiffFormatOpt
+    {
+        public static RawDiffFormat? ToRawDiffFormat(string msg)
+        {
+            switch (msg)
+            {
+                case "diff":
+                    return RawDiffFormat.RawDiffNormal;
+                case "patch":
+                    return RawDiffFormat.RawDiffPatch;
+            }
+            return null;
+        }
+    }
+
+    public static class RawDiffFormatExtensions
+    {
+        public static string ToTypeString(this RawDiffFormat ot)
+        {
+            switch (ot)
+            {
+                case RawDiffFormat.RawDiffNormal:
+                    return "diff";
+                case RawDiffFormat.RawDiffPatch:
+                    return "patch";
+                default:
+                    return "";
+            }
+        }
+    }
+
+    // RawDiffOptions contains optional arguments for dumpping a raw diff.
+    // Docs: https://git-scm.com/docs/git-format-patch
+    public class RawDiffOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+
+    // DiffBinaryOptions contains optional arguments for producing binary patch.
+    public class DiffBinaryOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+
+    // MergeBaseOptions contains optional arguments for getting merge base.
+    // // Docs: https://git-scm.com/docs/git-merge-base
+    public class MergeBaseOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // Reference contains information of a Git reference.
+    public class Reference
+    {
+        public string ID { get; set; }
+        public string Refspec { get; set; }
+    }
+    // ShowRefVerifyOptions contains optional arguments for verifying a reference.
+    // Docs: https://git-scm.com/docs/git-show-ref#Documentation/git-show-ref.txt---verify
+    public class ShowRefVerifyOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // SymbolicRefOptions contains optional arguments for get and set symbolic ref.
+    public class SymbolicRefOptions
+    {
+        // The name of the symbolic ref. When not set, default ref "HEAD" is used.
+        public string Name { get; set; }
+        // The name of the reference, e.g. "refs/heads/master". When set, it will
+        // be used to update the symbolic ref.
+        public string Ref { get; set; }
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // ShowRefOptions contains optional arguments for listing references.
+    // Docs: https://git-scm.com/docs/git-show-ref
+    public class ShowRefOptions
+    {
+        public ShowRefOptions()
+        {
+            this.Patterns = new List<string>();
+        }
+        // Indicates whether to include heads.
+        public bool Heads { get; set; }
+        // Indicates whether to include tags.
+        public bool Tags { get; set; }
+        // The list of patterns to filter results.
+        public List<string> Patterns { get; set; }
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // DeleteBranchOptions contains optional arguments for deleting a branch.
+    // // Docs: https://git-scm.com/docs/git-branch
+    public class DeleteBranchOptions
+    {
+        // Indicates whether to force delete the branch.
+        public bool Force { get; set; }
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // LsRemoteOptions contains arguments for listing references in a remote repository.
+    // Docs: https://git-scm.com/docs/git-ls-remote
+    public class LsRemoteOptions
+    {
+        // Indicates whether to include heads.
+        public bool Heads { get; set; }
+        // Indicates whether to include tags.
+        public bool Tags { get; set; }
+        // Indicates whether to not show peeled tags or pseudorefs.
+        public bool Refs { get; set; }
+        // The list of patterns to filter results.
+        public List<string> Patterns { get; set; }
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // AddRemoteOptions contains options to add a remote address.
+    // Docs: https://git-scm.com/docs/git-remote#Documentation/git-remote.txt-emaddem
+    public class AddRemoteOptions
+    {
+        // Indicates whether to execute git fetch after the remote information is set up.
+        public bool Fetch { get; set; }
+        // Indicates whether to add remote as mirror with --mirror=fetch.
+        public bool MirrorFetch { get; set; }
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+
+    }
+    // RemoveRemoteOptions contains arguments for removing a remote from the repository.
+    // Docs: https://git-scm.com/docs/git-remote#Documentation/git-remote.txt-emremoveem
+    public class RemoveRemoteOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
 }

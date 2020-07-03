@@ -8,28 +8,70 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using cassie.git.module.diffs;
+using cassie.git.module.hook;
 
 namespace cassie.git.module.repo
 {
     public class Repository
     {
         public string Path { get; set; }
-        public ConcurrentDictionary<string, Commit> CachedCommits;
-        public ConcurrentDictionary<string, object> CachedTags;
+        public static ConcurrentDictionary<string, Commit> CachedCommits = new ConcurrentDictionary<string, Commit>();
+        public static ConcurrentDictionary<string, object> CachedTags = new ConcurrentDictionary<string, object>();
 
         public const string LogFormatHashOnly = "format:%H";
 
-        public Repository()
-        {
-            this.CachedCommits = new ConcurrentDictionary<string, Commit>();
-            this.CachedTags = new ConcurrentDictionary<string, object>();
-        }
-
-        public Repository(string path):this()
+        public Repository(string path)
         {
             this.Path = path;
-            
+
         }
+
+        #region private methods
+
+        // parseCommit parses commit information from the (uncompressed) raw data of the commit object.
+        // It assumes "\n\n" separates the header from the rest of the message.
+        private Commit parseCommit(string data)
+        {
+            var commit = new Commit();
+            var lines = data.Split('\n');
+            if (lines.Length == 0) return commit;
+            if (lines.Length > 1 && string.IsNullOrEmpty(lines[0]))
+            {
+                commit.Message = lines[1];
+                return commit;
+            }
+            foreach (var line in lines)
+            {
+                var spacepos = line.IndexOf(' ');
+                if (spacepos < 1) continue;
+                var reftype = line.Substring(0, spacepos);
+                var val = line.Substring(spacepos + 1);
+                switch (reftype)
+                {
+                    case "tree":
+                    case "object":
+                        var id = SHA1.NewIDFromString(val);
+                        commit.Tree = new Tree { ID = id };
+                        break;
+                    case "parent":
+                        id = SHA1.NewIDFromString(val);
+                        commit.Parents.Add(id);
+                        break;
+                    case "author":
+                    case "tagger":
+                        var sig = Signature.ParseSignature(val);
+                        commit.Author = sig;
+                        break;
+                    case "committer":
+                        sig = Signature.ParseSignature(val);
+                        commit.Committer = sig;
+                        break;
+                }
+            }
+            return commit;
+        }
+
+        #endregion
         public async Task<string> RevParse(string rev, params Int64[] opts)
         {
             Int64 opt = 0;
@@ -59,7 +101,7 @@ namespace cassie.git.module.repo
             await cmd.RunAsync(dir: path, timeoutMs: opt.Timeout);
         }
 
-        
+
         // Clone clones the repository from remote URL to the destination.
         public async Task Clone(string url, string dst, params CloneOptions[] opts)
         {
@@ -325,17 +367,19 @@ namespace cassie.git.module.repo
             CatFileCommitOptions opt = new CatFileCommitOptions();
             if (opts != null && opts.Length > 0) opt = opts[0];
             Commit cacheCommit = null;
-            if (this.CachedCommits.Keys.Contains(rev)) cacheCommit = this.CachedCommits[rev];
+            if (CachedCommits.Keys.Contains(rev)) cacheCommit = CachedCommits[rev];
             if (null != cacheCommit) return cacheCommit;
-            var commitID = await this.RevParse(rev, opt.Timeout);
+            string commitID = "";
+            if (opt.Timeout == 0) commitID = await this.RevParse(rev, Command.DefaultTimeout);
+            else commitID = await this.RevParse(rev, opt.Timeout);
             var cmd = new Command("cat-file", "commit", commitID);
-            var result = await cmd.RunAsync(dir: this.Path,splitChar:'\n', timeoutMs: opt.Timeout);
+            var result = await cmd.RunAsync(dir: this.Path, splitChar: '\n', timeoutMs: opt.Timeout);
             if (result == null) throw new Exception("result can not be null");
             var c = this.parseCommit(result.StdOut);
             if (c == null) throw new Exception("commit can not be null");
             c.Tree.Repo = this;
             c.ID = SHA1.MustIDFromString(commitID);
-            this.CachedCommits.TryAdd(commitID, c);
+            CachedCommits.TryAdd(commitID, c);
             return c;
         }
         // CatFileType returns the object type of given revision of the repository.
@@ -398,7 +442,7 @@ namespace cassie.git.module.repo
             if (opt.RegexpIgnoreCase) cmd.AddArgs("--regexp-ignore-case");
             cmd.AddArgs("--");
             if (!string.IsNullOrEmpty(opt.Path)) cmd.AddArgs(Utils.EscapePath(opt.Path));
-            var result = await cmd.RunAsync(dir: this.Path,splitChar:'\n', timeoutMs: opt.Timeout);
+            var result = await cmd.RunAsync(dir: this.Path, splitChar: '\n', timeoutMs: opt.Timeout);
             if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
             return await this.ParsePrettyFormatLogToList(opt.Timeout, result.StdOut);
         }
@@ -498,84 +542,377 @@ namespace cassie.git.module.repo
                                     "--sort=-committerdate",
                                     "--format=%(committerdate:iso8601)");
 
-            if(!string.IsNullOrEmpty(opt.Branch)) cmd.AddArgs(RepositoryConst.RefsHeads+opt.Branch);
-            var result = await cmd.RunAsync(dir:this.Path,timeoutMs:opt.Timeout);
+            if (!string.IsNullOrEmpty(opt.Branch)) cmd.AddArgs(RepositoryConst.RefsHeads + opt.Branch);
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
             if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
             return Convert.ToDateTime(result.StdOut.Trim());
         }
         // Diff returns a parsed diff object between given commits of the repository.
-        public async Task<Diff> Diff(string rev,int maxFiles,int maxFileLines,int maxLineChars,params DiffOptions[] opts)
+        public async Task<Diff> Diff(string rev, int maxFiles, int maxFileLines, int maxLineChars, params DiffOptions[] opts)
         {
             var opt = new DiffOptions();
             if (opts.Length > 0) opt = opts[0];
-            var commit = await this.CatFileCommit(rev,new CatFileCommitOptions{Timeout=opt.Timeout});
+            var cfco = new CatFileCommitOptions { Timeout = opt.Timeout };
+            var commit = await this.CatFileCommit(rev, cfco);
             var cmd = new Command();
-            if(string.IsNullOrEmpty(opt.Base))
+            if (string.IsNullOrEmpty(opt.Base))
             {
                 // First commit of repository
-                if (commit.ParentsCount() ==0) cmd.AddArgs("show", "--full-index", rev);
-                else 
+                if (commit.ParentsCount() == 0) cmd.AddArgs("show", "--full-index", rev);
+                else
                 {
-                    var c = await commit.Parent(0);
+                    var c = await commit.Parent(0, cfco);
                     cmd.AddArgs("diff", "--full-index", "-M", c.ID.String(), rev);
                 }
             }
             else
-            { 
+            {
                 cmd.AddArgs("diff", "--full-index", "-M", opt.Base, rev);
             }
             var splitChar = '\n';
-            var result = await cmd.RunAsync(dir:this.Path,timeoutMs:opt.Timeout,splitChar:splitChar);
-            if(!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
-            var dp = new DiffParser(maxFiles,maxFileLines,maxLineChars);
-            return dp.StreamParseDiff(result.StdOut,splitChar);
-        }   
-
-        #region private methods
-
-        // parseCommit parses commit information from the (uncompressed) raw data of the commit object.
-        // It assumes "\n\n" separates the header from the rest of the message.
-        private Commit parseCommit(string data)
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout, splitChar: splitChar);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            var dp = new DiffParser(maxFiles, maxFileLines, maxLineChars);
+            return dp.StreamParseDiff(result.StdOut, splitChar);
+        }
+        // RawDiff dumps diff of repository in given revision directly to given io.Writer.
+        public async Task RawDiff(string rev, RawDiffFormat diffType, Action<string> received, params RawDiffOptions[] opts)
         {
-            var commit = new Commit();
-            var lines = data.Split('\n');
-            if (lines.Length == 0) return commit;
-            if (lines.Length > 1 && string.IsNullOrEmpty(lines[0]))
+            var opt = new RawDiffOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var commit = await CatFileCommit(rev, new CatFileCommitOptions { Timeout = opt.Timeout });
+            var cmd = new Command();
+            switch (diffType)
             {
-                commit.Message = lines[1];
-                return commit;
+                case RawDiffFormat.RawDiffNormal:
+                    if (commit.ParentsCount() == 0) cmd.AddArgs("show", rev);
+                    else
+                    {
+                        var c = await commit.Parent(0, new CatFileCommitOptions { Timeout = opt.Timeout });
+                        cmd.AddArgs("diff", "-M", c.ID.String(), rev);
+                    }
+                    break;
+                case RawDiffFormat.RawDiffPatch:
+                    if (commit.ParentsCount() == 0) cmd.AddArgs("format-patch", "--no-signature", "--stdout", "--root", rev);
+                    else
+                    {
+                        var c = await commit.Parent(0, new CatFileCommitOptions { Timeout = opt.Timeout });
+                        cmd.AddArgs("format-patch", "--no-signature", "--stdout", rev + "..." + c.ID.String());
+                    }
+                    break;
+                default:
+                    throw new Exception("invalid diffType:" + diffType.ToTypeString());
             }
-            foreach (var line in lines)
-            {
-                var spacepos = line.IndexOf(' ');
-                if (spacepos < 1) continue;
-                var reftype = line.Substring(0, spacepos);
-                var val = line.Substring(spacepos+1);
-                switch (reftype)
-                {
-                    case "tree":
-                    case "object":
-                        var id = SHA1.NewIDFromString(val);
-                        commit.Tree = new Tree { ID = id };
-                        break;
-                    case "parent":
-                        id = SHA1.NewIDFromString(val);
-                        commit.Parents.Add(id);
-                        break;
-                    case "author":
-                    case "tagger":
-                        var sig = Signature.ParseSignature(val);
-                        commit.Author = sig;
-                        break;
-                    case "committer":
-                        sig = Signature.ParseSignature(val);
-                        commit.Committer = sig;
-                        break;
-                }
-            }
-            return commit;
+            var result = await cmd.RunAsync(timeoutMs: opt.Timeout, dir: this.Path, splitChar: '\n', stdOut: received);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+        }
+        // DiffBinary returns binary patch between base and head revisions that could be used for git-apply.
+        public async Task<string> DiffBinary(string b, string head, params DiffBinaryOptions[] opts)
+        {
+            var opt = new DiffBinaryOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("diff", "--binary", b, head);
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            return result.StdOut;
         }
 
-        #endregion
+        // NewHook creates and returns a new hook with given name. Update method must be called
+        // to actually save the hook to disk.
+        public Hook NewHook(string dir, HookName name)
+        {
+            var hook = new Hook(System.IO.Path.Combine(this.Path, dir, name.ToTypeString()), name);
+            return hook;
+        }
+
+        // Hook returns a Git hook by given name in the repository. Giving empty directory
+        // will use the default directory. It returns an os.ErrNotExist if both active and
+        // sample hook do not exist.
+        public Hook Hook(string dir, HookName name)
+        {
+            if (string.IsNullOrEmpty(dir)) dir = HookConst.DefaultHooksDir;
+            // 1. Check if there is an active hook.
+            string fPath = System.IO.Path.Combine(this.Path, dir, name.ToTypeString());
+            if (Utils.IsFile(fPath))
+            {
+                var hook = new Hook
+                {
+                    Name = name,
+                    Path = fPath,
+                    Content = File.ReadAllText(fPath)
+                };
+                return hook;
+            }
+            else
+            {
+                var sample = ServerSideHook.ServerSideHookSamples[name];
+                if (string.IsNullOrEmpty(sample)) throw new Exception("sample content can not be null");
+                var hook = new Hook
+                {
+                    Name = name,
+                    Path = fPath,
+                    Content = sample,
+                    IsSample = true
+                };
+                return hook;
+            }
+        }
+        // Hooks returns a list of Git hooks found in the repository. Giving empty directory
+        // will use the default directory. It may return an empty slice when no hooks found.
+        public List<Hook> Hooks(string dir)
+        {
+            var hooks = new List<Hook>();
+            foreach (HookName name in (HookName[])Enum.GetValues(typeof(HookName)))
+            {
+                var hook = this.Hook(dir, name);
+                hooks.Add(hook);
+            }
+            return hooks;
+        }
+
+        // RepoMergeBase returns merge base between base and head revisions of the repository
+        // in given path.
+        public async Task<string> RepoMergeBase(string repoPath, string b, string head, params MergeBaseOptions[] opts)
+        {
+            var opt = new MergeBaseOptions();
+            if (opts.Length > 0) opt = opts[0];
+
+            var cmd = new Command("merge-base", b, head);
+            var result = await cmd.RunAsync(dir: repoPath, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            return result.StdOut.Trim();
+        }
+
+        // MergeBase returns merge base between base and head revisions of the repository.
+        public async Task<string> MergeBase(string b, string head, params MergeBaseOptions[] opts)
+        {
+            return await this.RepoMergeBase(this.Path, b, head, opts);
+        }
+
+        // RefShortName returns short name of heads or tags. Other references will retrun original string.
+        public string RefShortName(string refname)
+        {
+            if (refname.StartsWith(RepositoryConst.RefsHeads)) return refname.Substring(RepositoryConst.RefsHeads.Length);
+            else if (refname.StartsWith(RepositoryConst.RefsTags)) return refname.Substring(RepositoryConst.RefsTags.Length);
+            return refname;
+        }
+        // RepoShowRefVerify returns the commit ID of given reference if it exists in the repository
+        // in given path.
+        public async Task<string> RepoShowRefVerify(string repoPath, string refname, params ShowRefVerifyOptions[] opts)
+        {
+            var opt = new ShowRefVerifyOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("show-ref", "--verify", refname);
+            var result = await cmd.RunAsync(dir: repoPath, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            var refs = result.StdOut.Split(' ');
+            if (refs.Length > 0) return refs.First();
+            throw new Exception("refs length must be greatter than 0");
+        }
+        // ShowRefVerify returns the commit ID of given reference (e.g. "refs/heads/master")
+        // if it exists in the repository.
+        public async Task<string> ShowRefVerify(string refname, params ShowRefVerifyOptions[] opts)
+        {
+            return await this.RepoShowRefVerify(this.Path, refname, opts);
+        }
+        // BranchCommitID returns the commit ID of given branch if it exists in the repository.
+        // The branch must be given in short name e.g. "master".
+        public async Task<string> BranchCommitID(string branch, params ShowRefVerifyOptions[] opts)
+        {
+            return await this.ShowRefVerify(this.Path + branch, opts);
+        }
+        // TagCommitID returns the commit ID of given tag if it exists in the repository.
+        // The tag must be given in short name e.g. "v1.0.0".
+        public async Task<string> TagCommitID(string tag, params ShowRefVerifyOptions[] opts)
+        {
+            return await this.ShowRefVerify(this.Path + tag, opts);
+        }
+        // RepoHasReference returns true if given reference exists in the repository in given path.
+        // The reference must be given in full refspec, e.g. "refs/heads/master".
+        public async Task<bool> RepoHasReference(string repoPath, string refname, params ShowRefVerifyOptions[] opts)
+        {
+            try
+            {
+                await this.RepoShowRefVerify(repoPath, refname, opts);
+                return true;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+
+        }
+        // RepoHasBranch returns true if given branch exists in the repository in given path.
+        // The branch must be given in short name e.g. "master".
+        public async Task<bool> RepoHasBranch(string repoPath, string branch, params ShowRefVerifyOptions[] opts)
+        {
+            return await RepoHasReference(repoPath, RepositoryConst.RefsHeads + branch, opts);
+        }
+        // RepoHasTag returns true if given tag exists in the repository in given path.
+        // The tag must be given in short name e.g. "v1.0.0".
+        public async Task<bool> RepoHasTag(string repoPath, string tag, params ShowRefVerifyOptions[] opts)
+        {
+            return await RepoHasReference(repoPath, RepositoryConst.RefsTags + tag, opts);
+        }
+        // HasReference returns true if given reference exists in the repository.
+        // The reference must be given in full refspec, e.g. "refs/heads/master".
+        public async Task<bool> HasReference(string refname, params ShowRefVerifyOptions[] opts)
+        {
+            return await RepoHasReference(this.Path, refname, opts);
+        }
+        // HasBranch returns true if given branch exists in the repository.
+        // The branch must be given in short name e.g. "master".
+        public async Task<bool> HasBranch(string branch, params ShowRefVerifyOptions[] opts)
+        {
+            return await RepoHasBranch(this.Path, branch, opts);
+        }
+        // HasTag returns true if given tag exists in the repository.
+        // The tag must be given in short name e.g. "v1.0.0".
+        public async Task<bool> HasTag(string tag, params ShowRefVerifyOptions[] opts)
+        {
+            return await RepoHasTag(this.Path, tag, opts);
+        }
+        // SymbolicRef returns the reference name (e.g. "refs/heads/master") pointed by the
+        // symbolic ref. It returns an empty string and nil error when doing set operation.
+        public async Task<string> SymbolicRef(params SymbolicRefOptions[] opts)
+        {
+            var opt = new SymbolicRefOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("symbolic-ref");
+            if (string.IsNullOrEmpty(opt.Name)) opt.Name = "HEAD";
+            cmd.AddArgs(opt.Name);
+            if (!string.IsNullOrEmpty(opt.Ref)) cmd.AddArgs(opt.Ref);
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            return result.StdOut.Trim();
+        }
+        // ShowRef returns a list of references in the repository.
+        public async Task<List<Reference>> ShowRef(params ShowRefOptions[] opts)
+        {
+            var opt = new ShowRefOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("show-ref");
+            if (opt.Heads) cmd.AddArgs("--heads");
+            if (opt.Tags) cmd.AddArgs("--tags");
+            cmd.AddArgs("--");
+            if (opt.Patterns.Count > 0) cmd.AddArgs(opt.Patterns.ToArray());
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout, splitChar: '\n');
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            var lines = result.StdOut.Split('\n');
+            var refs = new List<Reference>();
+            foreach (var item in lines)
+            {
+                var fields = Regex.Split(item, @"\s+");
+                if (fields.Length < 2) continue;
+                refs.Add(new Reference
+                {
+                    ID = fields.First(),
+                    Refspec = fields.Last()
+                });
+            }
+            return refs;
+        }
+        // Branches returns a list of all branches in the repository.
+        public async Task<List<string>> Branches()
+        {
+            var heads = await this.ShowRef(new ShowRefOptions { Heads = true });
+            var branches = new List<string>();
+            foreach (var item in heads)
+            {
+                branches.Add(item.Refspec.Replace(RepositoryConst.RefsHeads, ""));
+            }
+            return branches;
+        }
+        // RepoDeleteBranch deletes the branch from the repository in given path.
+        public async Task RepoDeleteBranch(string repoPath, string name, params DeleteBranchOptions[] opts)
+        {
+            var opt = new DeleteBranchOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("branch");
+            if (opt.Force) cmd.AddArgs("-D");
+            else cmd.AddArgs("-d");
+            cmd.AddArgs(name);
+            var result = await cmd.RunAsync(dir: repoPath, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+        }
+        // LsRemote returns a list references in the remote repository.
+        public async Task<List<Reference>> LsRemote(string url, params LsRemoteOptions[] opts)
+        {
+            var opt = new LsRemoteOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("ls-remote", "--quiet");
+            if (opt.Heads) cmd.AddArgs("--heads");
+            if (opt.Tags) cmd.AddArgs("--tags");
+            if (opt.Refs) cmd.AddArgs("--refs");
+            cmd.AddArgs(url);
+            if (opt.Patterns.Count > 0) cmd.AddArgs(opt.Patterns.ToArray());
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout, splitChar: '\n');
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            var lines = result.StdOut.Split('\n');
+            var refs = new List<Reference>();
+            foreach (var item in lines)
+            {
+                var fields = Regex.Split(item, @"\s+");
+                if (fields.Length < 2) continue;
+                refs.Add(new Reference
+                {
+                    ID = fields.First(),
+                    Refspec = fields.Last()
+                });
+            }
+            return refs;
+        }
+        // IsURLAccessible returns true if given remote URL is accessible via Git
+        // within given timeout.
+        public async Task<bool> IsURLAccessible(string url, Int64 timeout)
+        {
+            try
+            {
+                await this.LsRemote(url, new LsRemoteOptions
+                {
+                    Patterns = new List<string> { "HEAD" },
+                    Timeout = timeout
+                });
+                return true;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+
+        }
+        // RepoAddRemote adds a new remote to the repository in given path.
+        public async Task RepoAddRemote(string repoPath, string name, string url, params AddRemoteOptions[] opts)
+        {
+            var opt = new AddRemoteOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("remote", "add");
+            if (opt.Fetch) cmd.AddArgs("-f");
+            if (opt.MirrorFetch) cmd.AddArgs("--mirror=fetch");
+            cmd.AddArgs(name, url);
+            var result = await cmd.RunAsync(dir: repoPath, timeoutMs: opt.Timeout, splitChar: '\n');
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+
+        }
+        // AddRemote adds a new remote to the repository.
+        public async Task AddRemote(string name, string url, params AddRemoteOptions[] opts)
+        {
+            await this.RepoAddRemote(this.Path, name, url, opts);
+        }
+        // RepoRemoveRemote removes a remote from the repository in given path.
+        public async Task RepoRemoveRemote(string repoPath, string name, params RemoveRemoteOptions[] opts)
+        {
+            var opt = new RemoveRemoteOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("remote", "remove", name);
+            var result = await cmd.RunAsync(dir: repoPath, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+        }
+        // RemoveRemote removes a remote from the repository.
+        public async Task RemoveRemote(string name, params RemoveRemoteOptions[] opts)
+        {
+            await this.RepoRemoveRemote(this.Path, name, opts);
+        }
     }
+
 }

@@ -172,6 +172,7 @@ namespace cassie.git.module.diffs
                 fr.Cursor = i;
                 var line = fr.Result[fr.Cursor];
                 if (line.StartsWith("+++ ") || line.StartsWith("--- ")) continue;
+                if(string.IsNullOrEmpty(line)) continue;
                 // Found new file
                 if (line.StartsWith(diffHead))
                 {

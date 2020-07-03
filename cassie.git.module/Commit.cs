@@ -24,12 +24,13 @@ namespace cassie.git.module
         public Tree Tree { get; set; }
 
         public List<SHA1> Parents { get; set; }
-        private ConcurrentDictionary<string,object> submodules { get; set; }
+        public static ConcurrentDictionary<string,object> Submodules = new ConcurrentDictionary<string, object>();
 
         public Commit()
         {
+            this.Tree = new Tree();
             this.Parents = new List<SHA1>();
-            this.submodules = new ConcurrentDictionary<string, object>();
+            Submodules = new ConcurrentDictionary<string, object>();
         }
 
         // Summary returns first line of commit message.
@@ -62,7 +63,7 @@ namespace cassie.git.module
         public async Task<Commit> Parent(int n, params CatFileCommitOptions[] opts)
         {
             var id = ParentID(n);
-            return await this.Tree.Repo.CatFileCommit(id.ToString(),opts);
+            return await this.Tree.Repo.CatFileCommit(id.String(),opts);
         }
 
     }

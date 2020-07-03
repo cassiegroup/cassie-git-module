@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ namespace cassie.git.module
         private string name;
         private List<string> args;
         private Dictionary<string,string> envs;
+        public static int DefaultTimeout = 15;
 
         public Command(params string[] args)
         {
@@ -92,6 +94,7 @@ namespace cassie.git.module
                                            char? splitChar = null,
                                            Int64? timeoutMs = null)
         {
+            if(timeoutMs == null || timeoutMs == 0) timeoutMs = DefaultTimeout; 
             
             Result result = new Result();
             var startInfo = GenerateStartInfo(dir);

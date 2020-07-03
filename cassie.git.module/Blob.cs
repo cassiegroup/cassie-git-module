@@ -25,5 +25,11 @@ namespace cassie.git.module
             return result;
         }
 
+        public async Task<Result> Pipeline()
+        {
+            var cmd = new Command("show",this.TreeEntry.ID.String());
+            return await cmd.RunAsync(dir:this.TreeEntry.Parent.Repo.Path);
+        }
+
     }
 }
