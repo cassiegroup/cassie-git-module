@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace cassie.git.module
+namespace cassie.git.module.tree
 {
     public class TreeEntry : IComparable<TreeEntry>
     {
@@ -16,8 +16,8 @@ namespace cassie.git.module
         public string Name { get; set; }
         public Tree Parent { get; set; }
 
-        public List<TreeEntry> Entries = new List<TreeEntry>();
         private Int64 size;
+
 
         public bool IsTree()
         {
@@ -32,6 +32,7 @@ namespace cassie.git.module
         public bool IsExec()
         {
             return this.Mode == EntryMode.EntryExec;
+            
         }
 
         public bool IsSymlink()
@@ -55,13 +56,9 @@ namespace cassie.git.module
 
         public Blob NewBlob(TreeEntry te)
         {
-            return new Blob(te);
-        }
-
-        public void Sort()
-        {
-            if(Entries.Count<2) return;
-            this.Entries.Sort();
+            var b = new Blob();
+            Utils.CopyAllTo(te,b);
+            return b;
         }
 
         public int CompareTo(TreeEntry other)

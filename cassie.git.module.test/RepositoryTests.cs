@@ -97,5 +97,42 @@ namespace cassie.git.module.test
             }
 
         }
+        [Fact]
+        public async void Repository_Tags()
+        {
+            // Save "post-receive" hook with some content
+            var repo = new Repository("/Users/lucas/Documents/GitHub/cassie-git-module/testdata/testrepo.git");
+            var result = await repo.Tags(new TagsOptions{Timeout=60});
+            Assert.NotEmpty(result);
+        }
+
+        [Fact]
+        public async void Repository_CreateTag()
+        {
+            // Save "post-receive" hook with some content
+            var repo = new Repository("/Users/lucas/Documents/GitHub/cassie-git-module");
+            await repo.CreateTag("v2.0.0", "master", new CreateTagOptions{Timeout=60});
+            var result = await repo.HasReference(RepositoryConst.RefsTags + "v2.0.0");
+            Assert.True(result);
+        }
+
+        [Fact]
+        public async void Repository_DeleteTag()
+        {
+            // Save "post-receive" hook with some content
+            var repo = new Repository("/Users/lucas/Documents/GitHub/cassie-git-module");
+            Assert.True(await repo.HasReference(RepositoryConst.RefsTags + "v2.0.0"));
+            await repo.DeleteTag("v2.0.0",  new DeleteTagOptions { Timeout = 60 });
+           
+        }
+        [Fact]
+        public async void Repository_LsTree()
+        {
+            // Save "post-receive" hook with some content
+            var repo = new Repository("/Users/lucas/Documents/GitHub/cassie-git-module");
+            var result = await repo.LsTree("190ba356f97694c544d53dc19e159a9717e43740",new LsTreeOptions{Timeout=60});
+            Assert.NotNull(result);
+
+        }
     }
 }

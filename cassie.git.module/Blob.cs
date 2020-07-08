@@ -5,30 +5,33 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using cassie.git.module.tree;
 
 namespace cassie.git.module
 {
-    public class Blob
+    public class Blob : TreeEntry
     {
-        public TreeEntry TreeEntry{get;set;}
+        // public TreeEntry TreeEntry{get;set;}
 
-        public Blob(TreeEntry te)
+        // public Blob(TreeEntry te)
+        // {
+        //     this.TreeEntry = te;
+        // }
+        public byte[] Bytes()
         {
-            this.TreeEntry = te;
-        }
-        public async Task<Result> Bytes(Action<string> stdOut = null,
-                                           Action<string> stdErr = null)
-        {
-            if(this.TreeEntry == null) return null;
-            var cmd = new Command("show",TreeEntry.ID.ToString());
-            var result = await cmd.RunAsync(dir:TreeEntry.Parent.Repo.Path,stdOut:stdOut,stdErr:stdErr);
+            
+            var cmd = new Command("show",this.ID.String());
+            var result = cmd.RunStream(dir: this.Parent.Repo.Path);
             return result;
         }
-
-        public async Task<Result> Pipeline()
+        //Func<byte[],int> return a
+        //if a > 0, read 
+        //if a <= 0, jump read loop
+        public byte[] Pipeline(Func<byte[], int> stdOut)
         {
-            var cmd = new Command("show",this.TreeEntry.ID.String());
-            return await cmd.RunAsync(dir:this.TreeEntry.Parent.Repo.Path);
+            var cmd = new Command("show",this.ID.String());
+            var ms = cmd.RunStream(stdOut,dir:this.Parent.Repo.Path,blockSize:128);
+            return ms;
         }
 
     }

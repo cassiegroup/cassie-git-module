@@ -5,24 +5,25 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using cassie.git.module.repo;
 
 namespace cassie.git.module
 {
     public class Tag
     {
+        public ObjectType Typ { get; set; }
         public SHA1 ID { get; set; }
-        public Signature Author { get; set; }
-        public Signature Committer { get; set; }
+        public SHA1 CommitID { get; set; }
+        public string Refspec { get; set; }
+        public Signature Tagger { get; set; }
         public string Message { get; set; }
-        public List<SHA1> Parents { get; set; }
-        public Tree Tree { get; set; }
-        public ConcurrentDictionary<string,object> Submodules { get; set; }
 
-        public Tag()
+        public Repository Repo { get; set; }
+
+        public async Task<Commit> Commit(params CatFileCommitOptions[] opts)
         {
-            this.Parents = new List<SHA1>();
-            this.Submodules = new ConcurrentDictionary<string, object>();
-            this.Tree = new Tree();
+            if(this.Repo == null) throw new Exception("Repository can not be null");
+            return await this.Repo.CatFileCommit(this.CommitID.String(),opts);
         }
 
         

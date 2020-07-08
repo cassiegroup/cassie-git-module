@@ -9,14 +9,15 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using cassie.git.module.diffs;
 using cassie.git.module.hook;
+using cassie.git.module.tree;
 
 namespace cassie.git.module.repo
 {
     public class Repository
     {
         public string Path { get; set; }
-        public static ConcurrentDictionary<string, Commit> CachedCommits = new ConcurrentDictionary<string, Commit>();
-        public static ConcurrentDictionary<string, object> CachedTags = new ConcurrentDictionary<string, object>();
+        public static readonly ConcurrentDictionary<string, Commit> CachedCommits = new ConcurrentDictionary<string, Commit>();
+        public static readonly ConcurrentDictionary<string, Tag> CachedTags = new ConcurrentDictionary<string, Tag>();
 
         public const string LogFormatHashOnly = "format:%H";
 
@@ -33,8 +34,13 @@ namespace cassie.git.module.repo
         private Commit parseCommit(string data)
         {
             var commit = new Commit();
+            var eol = data.IndexOf('\n');
+            if (eol == 0)
+            {
+                commit.Message = data.Substring(1);
+                return commit;
+            }
             var lines = data.Split('\n');
-            if (lines.Length == 0) return commit;
             if (lines.Length > 1 && string.IsNullOrEmpty(lines[0]))
             {
                 commit.Message = lines[1];
@@ -51,7 +57,7 @@ namespace cassie.git.module.repo
                     case "tree":
                     case "object":
                         var id = SHA1.NewIDFromString(val);
-                        commit.Tree = new Tree { ID = id };
+                        commit.TreeID = id;
                         break;
                     case "parent":
                         id = SHA1.NewIDFromString(val);
@@ -71,16 +77,101 @@ namespace cassie.git.module.repo
             return commit;
         }
 
-        #endregion
-        public async Task<string> RevParse(string rev, params Int64[] opts)
+        // parseTag parses tag information from the (uncompressed) raw data of the tag object.
+        // It assumes "\n\n" separates the header from the rest of the message.
+        private Tag parseTag(string data)
         {
-            Int64 opt = 0;
-            if (opts != null && opts.Length > 0)
-                opt = opts[0];
-            var cmd = new Command("rev-parse", rev);
-            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt);
-            return result.StdOut == "" ? "" : result.StdOut.Trim();
+            var tag = new Tag();
+            var eol = data.IndexOf('\n');
+            if (eol == 0)
+            {
+                tag.Message = data.Substring(1);
+                return tag;
+            }
+            var lines = data.Split('\n');
+            if (lines.Length == 0) return tag;
+            if (lines.Length > 1 && string.IsNullOrEmpty(lines[0]))
+            {
+                tag.Message = lines[1];
+                return tag;
+            }
+            foreach (var line in lines)
+            {
+                var spacepos = line.IndexOf(' ');
+                if (spacepos < 1) continue;
+                var reftype = line.Substring(0, spacepos);
+                var val = line.Substring(spacepos + 1);
+                switch (reftype)
+                {
+                    case "object":
+                        var id = SHA1.NewIDFromString(val);
+                        tag.CommitID = id;
+                        break;
+                    case "type":
+                    case "tagger":
+                        var sig = Signature.ParseSignature(val);
+                        tag.Tagger = sig;
+                        break;
+                }
+            }
+            return tag;
         }
+
+        // parseTree parses tree information from the (uncompressed) raw data of the tree object.
+        private List<TreeEntry> parseTree(Tree tree, string lines)
+        {
+            var entries = new List<TreeEntry>();
+            var list = lines.Split('\n');
+            foreach (var item in list)
+            {
+                if(string.IsNullOrEmpty(item)) continue;
+                var fields = Regex.Split(item, @"\s+");
+                var entry = new TreeEntry();
+                entry.Parent = tree;
+                if (fields.Length != 4) throw new Exception("error message format,should 100644 blob 67b72042b5c3ea21777ca62ea731b0cd89a78bbd    .DS_Store");
+                switch (fields[0])
+                {
+                    case "100644":
+                    case "100664":
+                        entry.Mode = EntryMode.EntryBlob;
+                        entry.Typ = ObjectType.ObjectBlob;
+                        break;
+                    case "100755":
+                        entry.Mode = EntryMode.EntryExec;
+                        entry.Typ = ObjectType.ObjectBlob;
+                        break;
+                    case "120000":
+                        entry.Mode = EntryMode.EntrySymlink;
+                        entry.Typ = ObjectType.ObjectBlob;
+                        break;
+                    case "160000":
+                        entry.Mode = EntryMode.EntryCommit;
+                        entry.Typ = ObjectType.ObjectCommit;
+                        break;
+                    case "040000":
+                        entry.Mode = EntryMode.EntryTree;
+                        entry.Typ = ObjectType.ObjectTree;
+                        break;
+                    default:
+                        throw new Exception("error message format,should 100644 blob 67b72042b5c3ea21777ca62ea731b0cd89a78bbd    .DS_Store");
+                }
+                var id = SHA1.NewIDFromString(fields[2]);
+                entry.ID = id;
+                entry.Name = fields[3];
+                entries.Add(entry);
+            }
+            return entries;
+        }
+        #endregion
+        // public async Task<string> RevParse(string rev, params Int64[] opts)
+        // {
+        //     Int64 opt = 0;
+        //     if (opts != null && opts.Length > 0)
+        //         opt = opts[0];
+        //     var cmd = new Command("rev-parse", rev);
+        //     var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt);
+        //     return result.StdOut == "" ? "" : result.StdOut.Trim();
+        // }
 
         // Init initializes a new Git repository.
         public async Task Init(string path, params InitOptions[] opts)
@@ -354,6 +445,7 @@ namespace cassie.git.module.repo
             var list = new List<Commit>();
             foreach (var id in ids)
             {
+                if(string.IsNullOrEmpty(id)) continue;
                 var commit = await this.CatFileCommit(id, new CatFileCommitOptions { Timeout = timeout });
                 list.Add(commit);
             }
@@ -370,14 +462,14 @@ namespace cassie.git.module.repo
             if (CachedCommits.Keys.Contains(rev)) cacheCommit = CachedCommits[rev];
             if (null != cacheCommit) return cacheCommit;
             string commitID = "";
-            if (opt.Timeout == 0) commitID = await this.RevParse(rev, Command.DefaultTimeout);
-            else commitID = await this.RevParse(rev, opt.Timeout);
+            if (opt.Timeout == 0) commitID = await this.RevParse(rev, new RevParseOptions{ Timeout= Command.DefaultTimeout});
+            else commitID = await this.RevParse(rev, new RevParseOptions { Timeout = opt.Timeout });
             var cmd = new Command("cat-file", "commit", commitID);
             var result = await cmd.RunAsync(dir: this.Path, splitChar: '\n', timeoutMs: opt.Timeout);
             if (result == null) throw new Exception("result can not be null");
             var c = this.parseCommit(result.StdOut);
             if (c == null) throw new Exception("commit can not be null");
-            c.Tree.Repo = this;
+            c.Repo = this;
             c.ID = SHA1.MustIDFromString(commitID);
             CachedCommits.TryAdd(commitID, c);
             return c;
@@ -385,7 +477,7 @@ namespace cassie.git.module.repo
         // CatFileType returns the object type of given revision of the repository.
         public async Task<ObjectType?> CatFileType(string rev, params CatFileTypeOptions[] opts)
         {
-            CatFileTypeOptions opt = null;
+            CatFileTypeOptions opt = new CatFileTypeOptions();
             if (opts != null && opts.Length > 0) opt = opts[0];
             var cmd = new Command("cat-file", "-t", rev);
             var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
@@ -525,12 +617,40 @@ namespace cassie.git.module.repo
             if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
             return names;
         }
-
         // DiffNameOnly returns a list of changed files between base and head revisions of the
         // repository.
         public async Task<List<string>> DiffNameOnly(string baseBranch, string head, params DiffNameOnlyOptions[] opts)
         {
             return await this.RepoDiffNameOnly(this.Path, baseBranch, head, opts);
+        }
+        // RevListCount returns number of total commits up to given refspec of the repository.
+        public async Task<Int64> RevListCount(List<string> refspecs, params RevListCountOptions[] opts)
+        {
+            var opt = new RevListCountOptions();
+            if (opts.Length > 0) opt = opts[0];
+            if(refspecs == null || refspecs.Count == 0) throw new Exception("refspecs list can not be null");
+            var cmd = new Command("rev-list", "--count");
+            cmd.AddArgs(refspecs.ToArray());
+            cmd.AddArgs("--");
+            if(!string.IsNullOrEmpty(opt.Path)) cmd.AddArgs(Utils.EscapePath(opt.Path));
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            return Convert.ToInt64(result.StdOut);
+        }
+
+        // RevList returns a list of commits based on given refspecs in reverse chronological order.
+        public async Task<List<Commit>> RevList(List<string> refspecs, params RevListOptions[] opts)
+        {
+            var opt = new RevListOptions();
+            if (opts.Length > 0) opt = opts[0];
+            if (refspecs == null || refspecs.Count == 0) throw new Exception("refspecs list can not be null");
+            var cmd = new Command("rev-list");
+            cmd.AddArgs(refspecs.ToArray());
+            cmd.AddArgs("--");
+            if (!string.IsNullOrEmpty(opt.Path)) cmd.AddArgs(Utils.EscapePath(opt.Path));
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout,splitChar:'\n');
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            return await this.ParsePrettyFormatLogToList(opt.Timeout,result.StdOut);
         }
         // LatestCommitTime returns the time of latest commit of the repository.
         public async Task<DateTime> LatestCommitTime(params LatestCommitTimeOptions[] opts)
@@ -561,7 +681,7 @@ namespace cassie.git.module.repo
                 if (commit.ParentsCount() == 0) cmd.AddArgs("show", "--full-index", rev);
                 else
                 {
-                    var c = await commit.Parent(0, cfco);
+                    var c = await commit.GetParent(0, cfco);
                     cmd.AddArgs("diff", "--full-index", "-M", c.ID.String(), rev);
                 }
             }
@@ -588,7 +708,7 @@ namespace cassie.git.module.repo
                     if (commit.ParentsCount() == 0) cmd.AddArgs("show", rev);
                     else
                     {
-                        var c = await commit.Parent(0, new CatFileCommitOptions { Timeout = opt.Timeout });
+                        var c = await commit.GetParent(0, new CatFileCommitOptions { Timeout = opt.Timeout });
                         cmd.AddArgs("diff", "-M", c.ID.String(), rev);
                     }
                     break;
@@ -596,7 +716,7 @@ namespace cassie.git.module.repo
                     if (commit.ParentsCount() == 0) cmd.AddArgs("format-patch", "--no-signature", "--stdout", "--root", rev);
                     else
                     {
-                        var c = await commit.Parent(0, new CatFileCommitOptions { Timeout = opt.Timeout });
+                        var c = await commit.GetParent(0, new CatFileCommitOptions { Timeout = opt.Timeout });
                         cmd.AddArgs("format-patch", "--no-signature", "--stdout", rev + "..." + c.ID.String());
                     }
                     break;
@@ -612,7 +732,7 @@ namespace cassie.git.module.repo
             var opt = new DiffBinaryOptions();
             if (opts.Length > 0) opt = opts[0];
             var cmd = new Command("diff", "--binary", b, head);
-            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout,splitChar:'\n');
             if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
             return result.StdOut;
         }
@@ -912,6 +1032,131 @@ namespace cassie.git.module.repo
         public async Task RemoveRemote(string name, params RemoveRemoteOptions[] opts)
         {
             await this.RepoRemoveRemote(this.Path, name, opts);
+        }
+        // getTag returns a tag by given SHA1 hash.
+        public async Task<Tag> GetTag(SHA1 id, Int64 timeout)
+        {
+            var t = new Tag();
+            if (CachedTags.Keys.Contains(id.String()))
+            {
+                t = CachedTags[id.String()];
+                return t;
+            }
+            // Check tag type
+            var typ = await this.CatFileType(id.String(), new CatFileTypeOptions { Timeout = timeout });
+            if (typ == null) throw new Exception("ObjectType can not be null");
+            var tag = new Tag();
+            switch (typ)
+            {
+                case ObjectType.ObjectCommit:
+                    tag = new Tag
+                    {
+                        ID = id,
+                        Typ = ObjectType.ObjectCommit,
+                        CommitID = id,
+                        Repo = this
+                    };
+                    break;
+                case ObjectType.ObjectTag:
+                    var cmd = new Command("cat-file", "-p", id.String());
+                    var result = await cmd.RunAsync(dir: this.Path);
+                    if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+                    tag = parseTag(result.StdOut);
+                    tag.Typ = ObjectType.ObjectTag;
+                    tag.ID = id;
+                    tag.Repo = this;
+                    break;
+                default:
+                    throw new Exception($"unsupported tag type: {typ.ToString()}");
+            }
+            var res = CachedTags.TryAdd(id.String(), tag);
+            if (!res) throw new Exception("Dictionary can't insert");
+
+            return tag;
+        }
+        // Tag returns a Git tag by given name, e.g. "v1.0.0".
+        public async Task<Tag> Tag(string name, params TagOptions[] opts)
+        {
+            var opt = new TagOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var refspec = RepositoryConst.RefsTags + name;
+            var refs = await this.ShowRef(new ShowRefOptions
+            {
+                Tags = true,
+                Patterns = new List<string> { refspec },
+                Timeout = opt.Timeout
+            });
+            if (refs == null || refs.Count == 0) throw new Exception("Refs can not be null");
+            var id = SHA1.NewIDFromString(refs.First().ID);
+            var tag = await this.GetTag(id, opt.Timeout);
+            tag.Refspec = refspec;
+            return tag;
+
+        }
+        // RepoTags returns a list of tags of the repository in given path.
+        public async Task<List<string>> RepoTags(string repoPath, params TagsOptions[] opts)
+        {
+            var opt = new TagsOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("tag", "--list");
+            var ver = await Git.BinVersion();
+            var version = ver.CompareTo(new Version("2.4.9"));
+            if (version >= 1) cmd.AddArgs("--sort=-creatordate");
+            var result = await cmd.RunAsync(dir: repoPath, timeoutMs: opt.Timeout, splitChar: '\n');
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            var t = result.StdOut.Split('\n');
+            try
+            {
+                var tags = t.ToList().GetRange(0, t.Length - 1).OrderByDescending(b => b);
+                return tags.ToList();
+            }
+            catch (System.Exception ex)
+            {
+                throw ex;
+            }
+
+
+        }
+        // Tags returns a list of tags of the repository.
+        public async Task<List<string>> Tags(params TagsOptions[] opts)
+        {
+            return await this.RepoTags(this.Path, opts);
+        }
+        // CreateTag creates a new tag on given revision.
+        public async Task CreateTag(string name, string rev, params CreateTagOptions[] opts)
+        {
+            var opt = new CreateTagOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("tag", name, rev);
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+        }
+        // DeleteTag deletes a tag from the repository.
+        public async Task DeleteTag(string name, params DeleteTagOptions[] opts)
+        {
+            var opt = new DeleteTagOptions();
+            if (opts.Length > 0) opt = opts[0];
+            var cmd = new Command("tag", "--delete", name);
+            var result = await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+        }
+        // LsTree returns the tree object in the repository by given revision.
+        public async Task<Tree> LsTree(string rev, params LsTreeOptions[] opts)
+        {
+            var opt = new LsTreeOptions();
+            if (opts.Length > 0) opt = opts[0];
+            if(opt.Timeout>0) rev = await this.RevParse(rev, new RevParseOptions{Timeout=opt.Timeout});
+            else rev = await this.RevParse(rev);
+            var t = new Tree
+            {
+                TreeID=SHA1.MustIDFromString(rev),
+                Repo=this
+            };
+            var cmd = new Command("ls-tree", rev);
+            var result = await cmd.RunAsync(dir:this.Path,timeoutMs:opt.Timeout,splitChar:'\n');
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            t.Entries = this.parseTree(t,result.StdOut);
+            return t;
         }
     }
 

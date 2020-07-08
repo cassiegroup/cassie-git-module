@@ -202,7 +202,7 @@ namespace cassie.git.module.repo
         // The number commits skipped before starting to show the commit output.
         public int Skip { get; set; }
         // To only show commits since the time.
-        public DateTime Since { get; set; }
+        public DateTime? Since { get; set; }
         // The regular expression to filter commits by their messages.
         public string GrepPattern { get; set; }
         // Indicates whether to ignore letter case when match the regular expression.
@@ -265,6 +265,27 @@ namespace cassie.git.module.repo
         public string Path { get; set; }
         // The timeout duration before giving up for each shell command execution.
         // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+
+    // RevListCountOptions contains optional arguments for counting commits.
+    // Docs: https://git-scm.com/docs/git-rev-list#Documentation/git-rev-list.txt---count
+    public class RevListCountOptions
+    {
+        // The relative path of the repository.
+        public string Path{get;set;}
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied. { get; set; }
+        public Int64 Timeout { get; set; }
+    }
+    // RevListOptions contains optional arguments for listing commits.
+    // Docs: https://git-scm.com/docs/git-rev-list
+    public class RevListOptions
+    {
+        // The relative path of the repository.
+        public string Path { get; set; }
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied. { get; set; }
         public Int64 Timeout { get; set; }
     }
 
@@ -437,6 +458,46 @@ namespace cassie.git.module.repo
     // RemoveRemoteOptions contains arguments for removing a remote from the repository.
     // Docs: https://git-scm.com/docs/git-remote#Documentation/git-remote.txt-emremoveem
     public class RemoveRemoteOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // TagOptions contains optional arguments for getting a tag.
+    // Docs: https://git-scm.com/docs/git-cat-file
+    public class TagOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // TagsOptions contains optional arguments for listing tags.
+    // Docs: https://git-scm.com/docs/git-tag#Documentation/git-tag.txt---list
+    public class TagsOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // CreateTagOptions contains optional arguments for creating a tag.
+    // Docs: https://git-scm.com/docs/git-tag
+    public class CreateTagOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // DeleteTagOptions contains optional arguments for deleting a tag.
+    // Docs: https://git-scm.com/docs/git-tag#Documentation/git-tag.txt---delete
+    public class DeleteTagOptions
+    {
+        // The timeout duration before giving up for each shell command execution.
+        // The default timeout duration will be used when not supplied.
+        public Int64 Timeout { get; set; }
+    }
+    // LsTreeOptions contains optional arguments for listing trees.
+    // Docs: https://git-scm.com/docs/git-ls-tree
+    public class LsTreeOptions
     {
         // The timeout duration before giving up for each shell command execution.
         // The default timeout duration will be used when not supplied.

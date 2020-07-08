@@ -4,6 +4,9 @@ using System.Globalization;
 using System.Security.AccessControl;
 using System.IO;
 using System.Security.Principal;
+using System.Linq;
+using System.Collections.Generic;
+using System.Text;
 
 namespace cassie.git.module
 {
@@ -114,9 +117,97 @@ namespace cassie.git.module
         // }
 
 
-        public static string ToRfc3339String(DateTime dateTime)
+        public static string ToRfc3339String(DateTime? dateTime)
         {
-            return dateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz", DateTimeFormatInfo.InvariantInfo);
+            return ((DateTime)dateTime).ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz", DateTimeFormatInfo.InvariantInfo);
         }
+
+        public static string CleanFileName(string toCleanPath)
+        {
+            var replaceWith = "";
+            //get just the filename - can't use Path.GetFileName since the path might be bad!  
+            string[] pathParts = toCleanPath.Split(new char[] { '\\' });
+            //get just the path  
+            string newPath = toCleanPath;
+            //clean bad path chars  
+            foreach (char badChar in Path.GetInvalidPathChars())
+            {
+                newPath = newPath.Replace(badChar.ToString(), replaceWith);
+            }
+            //return new, clean path:  
+            return newPath ;
+        }
+
+        public static void CopyAllTo<T>(T source, T target) where T : new()
+        {
+            var type = typeof(T);
+            foreach (var sourceProperty in type.GetProperties())
+            {
+                var targetProperty = type.GetProperty(sourceProperty.Name);
+                targetProperty.SetValue(target, sourceProperty.GetValue(source, null), null);
+            }
+            foreach (var sourceField in type.GetFields())
+            {
+                var targetField = type.GetField(sourceField.Name);
+                targetField.SetValue(target, sourceField.GetValue(source));
+            }
+        }
+
+       public static string GetImageType(byte[] bytes)
+        {
+            string headerCode = GetHeaderInfo(bytes).ToUpper();
+
+            if (headerCode.StartsWith("FFD8FFE0"))
+            {
+                return "JPG";
+            }
+            else if (headerCode.StartsWith("49492A"))
+            {
+                return "TIFF";
+            }
+            else if (headerCode.StartsWith("424D"))
+            {
+                return "BMP";
+            }
+            else if (headerCode.StartsWith("474946"))
+            {
+                return "GIF";
+            }
+            else if (headerCode.StartsWith("89504E470D0A1A0A"))
+            {
+                return "PNG";
+            }
+            else
+            {
+                return ""; //UnKnown
+            }
+        }
+
+        public static string GetHeaderInfo(byte[] bytes)
+        {
+            byte[] buffer = bytes.Take(8).ToArray();
+
+            StringBuilder sb = new StringBuilder();
+            foreach (byte b in buffer)
+                sb.Append(b.ToString("X2"));
+
+            return sb.ToString();
+        }
+
+        private class ByteSearchStore
+        {
+            public int Index { get; set; }
+            public int StartingIndex { get; set; }
+        }
+    }
+
+    public enum ImageFormat
+    {
+        Bmp,
+        Jpeg,
+        Gif,
+        Tiff,
+        Png,
+        Unknown
     }
 }
