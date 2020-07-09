@@ -10,7 +10,7 @@ namespace cassie.git.module.test
 {
     public class CommitTests
     {
-        private string repoPath = "/Users/lucas/Documents/GitHub/cassie-git-module/testdata/testrepo.git";
+        private string repoPath = "../../../../testdata/testrepo.git";
         [Fact]
         public async void Commit_Parent()
         {

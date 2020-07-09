@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\cassie.git.module\cassie.git.module.csproj" />
+    <None Include="../testdata/testrepo.git/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
