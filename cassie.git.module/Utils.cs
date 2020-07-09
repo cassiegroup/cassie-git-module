@@ -199,6 +199,15 @@ namespace cassie.git.module
             public int Index { get; set; }
             public int StartingIndex { get; set; }
         }
+
+        public static string BasePath(string path)
+        {
+            if(string.IsNullOrEmpty(path)) return ".";
+            var name = System.IO.Path.GetFileName(path);
+            if(string.IsNullOrEmpty(name)) name = System.IO.Path.GetDirectoryName(path);
+            return name;
+        }
+        
     }
 
     public enum ImageFormat

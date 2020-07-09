@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using cassie.git.module.commits;
 using cassie.git.module.repo;
 
 namespace cassie.git.module

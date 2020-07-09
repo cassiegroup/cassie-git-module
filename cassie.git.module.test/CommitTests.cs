@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using cassie.git.module.commits;
 using cassie.git.module.repo;
 using Xunit;
 
@@ -256,6 +257,28 @@ namespace cassie.git.module.test
             cc = await c.IsImageFileByIndex("2ce918888b0fdd4736767360fc5e3e83daf47fce");
             Assert.True(cc);
            
+        }
+        [Fact]
+        public async void Commit_CreateArchive()
+        {
+            var repo = new Repository(repoPath);
+            var c = await repo.CatFileCommit("755fd577edcfd9209d0ac072eed3b022cbe4d39b");
+            var tempPath = AppDomain.CurrentDomain.BaseDirectory+DateTime.Now.ToString("yyyyMMddHHmmss")+"."+ArchiveFormat.ArchiveZip.ToTypeString();
+            await c.CreateArchive(ArchiveFormat.ArchiveZip,tempPath);
+
+            Assert.True(System.IO.File.Exists(tempPath));
+            System.IO.File.Delete(tempPath);
+
+        }
+        [Fact]
+        public async void Commit_GetSubmodules()
+        {
+            var repo = new Repository(repoPath);
+            var c = await repo.CatFileCommit("4e59b72440188e7c2578299fc28ea425fbe9aece");
+            var mod = await c.GetSubmodule("gogs/docs-api");
+            Assert.Equal("gogs/docs-api",mod.Name);
+            Assert.Equal("https://github.com/gogs/docs-api.git",mod.URL);
+            Assert.Equal("6b08f76a5313fa3d26859515b30aa17a5faa2807", mod.Commit);
         }
     }
 }

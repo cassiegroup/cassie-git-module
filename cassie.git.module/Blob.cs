@@ -17,6 +17,13 @@ namespace cassie.git.module
         // {
         //     this.TreeEntry = te;
         // }
+        public async Task<Result> Get()
+        {
+            var cmd = new Command("show",this.ID.String());
+            var result = await cmd.RunAsync(dir:this.Parent.Repo.Path,splitChar:'\n');
+            if(!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+            return result;
+        }
         public byte[] Bytes()
         {
             

@@ -4,11 +4,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using cassie.git.module.repo;
 using cassie.git.module.tree;
 
-namespace cassie.git.module
+namespace cassie.git.module.commits
 {
     // Submodule contains information of a Git submodule.
     public class Commit : Tree
@@ -23,12 +24,12 @@ namespace cassie.git.module
         public string Message { get; set; }
 
         public List<SHA1> Parents { get; set; }
-        public static ConcurrentDictionary<string, object> Submodules = new ConcurrentDictionary<string, object>();
+        public static ConcurrentDictionary<string, Submodule> Submodules = new ConcurrentDictionary<string, Submodule>();
 
         public Commit()
         {
             this.Parents = new List<SHA1>();
-            Submodules = new ConcurrentDictionary<string, object>();
+            Submodules = new ConcurrentDictionary<string, Submodule>();
         }
 
         // Summary returns first line of commit message.
@@ -116,16 +117,77 @@ namespace cassie.git.module
         {
             var b = await this.NewBlob(subPath, new LsTreeOptions { Timeout = 60 });
             if (b == null) return false;
-            Func<byte[],int> stdOut= s => 0;
-            return Utils.GetImageType(b.Pipeline(stdOut))!="";
+            Func<byte[], int> stdOut = s => 0;
+            return Utils.GetImageType(b.Pipeline(stdOut)) != "";
         }
         // IsImageFileByIndex returns true if the blob of the commit is an image by index.
         public async Task<bool> IsImageFileByIndex(string index)
         {
             var b = await this.BlobByIndex(index);
-            if(b == null) return false;
+            if (b == null) return false;
             Func<byte[], int> stdOut = s => 0;
             return Utils.GetImageType(b.Pipeline(stdOut)) != "";
+        }
+        // CreateArchive creates given format of archive to the destination.
+        public async Task CreateArchive(ArchiveFormat format, string dst)
+        {
+            var prefix = Utils.BasePath(this.Repo.Path.TrimSuffix(".git")) + "/";
+            var cmd = new Command("archive",
+                                    "--prefix=" + prefix,
+                                    "--format=" + format.ToTypeString(),
+                                    "-o", dst,
+                                    this.ID.String());
+            var result = await cmd.RunAsync(dir: this.Repo.Path);
+            if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
+        }
+        // GetSubmodules returns submodules found in this commit.
+        public async Task<ConcurrentDictionary<string, Submodule>> GetSubmodules()
+        {
+            if(Submodules.Count > 0) return Submodules;
+            TreeEntry e = null;
+            e = await this.NewTreeEntry(".gitmodules");
+            if (e == null) return new ConcurrentDictionary<string, Submodule>();
+            var result = await e.NewBlob().Get();
+            bool inSection = false;
+            string path = "";
+            var lines = result.StdOut.Split('\n');
+            foreach (var item in lines)
+            {
+                if (string.IsNullOrEmpty(item)) continue;
+                if (item.StartsWith("[submodule"))
+                {
+                    inSection = true;
+                    continue;
+                }
+                else if (!inSection) continue;
+                var fields = Regex.Split(item, @"\=+");
+                switch (fields[0].Trim())
+                {
+                    case "path":
+                        path = fields[1].Trim();
+                        break;
+                    case "url":
+                        var mod = new Submodule
+                        {
+                            Name = path,
+                            URL = fields[1].Trim()
+                        };
+                        mod.Commit = await this.Repo.RevParse(this.ID.String() + ":" + mod.Name);
+                        Submodules.TryAdd(path, mod);
+                        inSection = false;
+                        break;
+                }
+            }
+            return Submodules;
+        }
+        // GetSubmodule returns submodule by given name. It returns an ErrSubmoduleNotExist
+        // if the path does not exist as a submodule.
+        public async Task<Submodule> GetSubmodule(string path)
+        {
+            var mods = await this.GetSubmodules();
+            if(string.IsNullOrEmpty(path)) return null;
+            if(Submodules.Keys.Contains(path)) return Submodules[path];
+            return null;
         }
     }
 }

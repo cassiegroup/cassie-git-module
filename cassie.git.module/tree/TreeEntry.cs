@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace cassie.git.module.tree
 {
-    public class TreeEntry : IComparable<TreeEntry>
+    public class TreeEntry : EntryBase, IComparable<TreeEntry>
     {
         public EntryMode Mode { get; set; }
         public ObjectType Typ { get; set; }
@@ -54,10 +54,10 @@ namespace cassie.git.module.tree
             return size;
         }
 
-        public Blob NewBlob(TreeEntry te)
+        public Blob NewBlob()
         {
             var b = new Blob();
-            Utils.CopyAllTo(te,b);
+            Utils.CopyAllTo(this,b);
             return b;
         }
 
@@ -67,14 +67,14 @@ namespace cassie.git.module.tree
             {
                 return 1;
             }
-            if ((other.IsTree() || other.IsCommit()) && !this.IsTree() && !this.IsCommit())
-            {
-                return -1;
-            }
+            // if ((other.IsTree() || other.IsCommit()) && !this.IsTree() && !this.IsCommit())
+            // {
+            //     return 1;
+            // }
             
-            if(string.Compare(this.Name,other.Name)<0) return 1;
+            if(string.Compare(this.Name,other.Name)>0) return 1;
             else return -1;
-        }
+        }   
     }
 
     // There are only a few file modes in Git. They look like unix file modes, but they can only be

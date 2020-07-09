@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using cassie.git.module.commits;
 using cassie.git.module.diffs;
 using cassie.git.module.hook;
 using cassie.git.module.tree;
@@ -1155,7 +1156,7 @@ namespace cassie.git.module.repo
             var cmd = new Command("ls-tree", rev);
             var result = await cmd.RunAsync(dir:this.Path,timeoutMs:opt.Timeout,splitChar:'\n');
             if (!string.IsNullOrEmpty(result.StdErr)) throw new Exception(result.StdErr);
-            t.Entries = this.parseTree(t,result.StdOut);
+            t.Entries = this.parseTree(t,result.StdOut).OrderBy(a => a.Name).OrderBy(a => a.Mode).ToList();
             return t;
         }
     }
