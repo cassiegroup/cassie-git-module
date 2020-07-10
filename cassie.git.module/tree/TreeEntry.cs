@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace cassie.git.module.tree
 {
-    public class TreeEntry : EntryBase, IComparable<TreeEntry>
+    public class TreeEntry : IComparable<TreeEntry>
     {
         public EntryMode Mode { get; set; }
         public ObjectType Typ { get; set; }
