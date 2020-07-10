@@ -4,10 +4,14 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>8.0</LangVersion>
     <PackageId>cassie-git-module</PackageId>
-    <Version>0.8.3</Version>
+    <Version>0.8.3.2</Version>
     <Authors>cassie</Authors>
     <Company>cassie group</Company>
     <PackageTags>csharp;dotnet core;git;sdk;cassie;dotnet</PackageTags>
+    <ProjectUrl>https://github.com/cassiegroup/cassie-git-module</ProjectUrl>
+    <RepositoryUrl>https://github.com/cassiegroup/cassie-git-module</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <Description>
       This git library follow .netstandard 2.0. you can use it in .NET Framework and .NET core.
     </Description>

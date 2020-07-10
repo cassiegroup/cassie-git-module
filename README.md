@@ -1,5 +1,6 @@
 # Git Module for .NET
-Copy from gogs git module. https://github.com/gogs/git-module.
+Copy from gogs git module. [https://github.com/gogs/git-module](https://github.com/gogs/git-module)
+![nuget version](https://img.shields.io/badge/Nuget-0.8.3.2-green) 
 
 Package git-module is a Go module for Git access through shell commands.
 
