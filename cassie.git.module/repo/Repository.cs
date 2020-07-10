@@ -244,9 +244,9 @@ namespace cassie.git.module.repo
             await cmd.RunAsync(dir: this.Path, timeoutMs: opt.Timeout);
         }
 
-        // Push pushs local changes to given remote and branch for the repository
+        // RepoPush pushs local changes to given remote and branch for the repository
         // in given path.
-        public async Task Push(string repoPath, string remote, string branch, params PushOptions[] opts)
+        public async Task RepoPush(string repoPath, string remote, string branch, params PushOptions[] opts)
         {
             var opt = new PushOptions();
             if (opts.Length > 0) opt = opts[0];
@@ -257,7 +257,7 @@ namespace cassie.git.module.repo
         // Push pushs local changes to given remote and branch for the repository.
         public async Task Push(string remote, string branch, params PushOptions[] opts)
         {
-            await Push(this.Path, remote, branch, opts);
+            await RepoPush(this.Path, remote, branch, opts);
         }
         // RepoCheckout checks out to given branch for the repository in given path.
         public async Task RepoCheckout(string repoPath, string branch, params CheckoutOptions[] opts)
