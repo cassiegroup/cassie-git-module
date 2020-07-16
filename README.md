@@ -19,7 +19,7 @@ This project is under the MIT License. See the LICENSE file for the full license
 ### Installation
 
 ```bash
-dotnet add package cassie-git-module --version 0.8.3
+dotnet add package cassie-git-module --version 0.8.3.2
 ```
 
 ### Initial a project
