@@ -4,7 +4,7 @@ Copy from gogs git module. [https://github.com/gogs/git-module](https://github.c
 ![nuget version](https://img.shields.io/badge/Nuget-0.8.3.2-green) 
 
 
-Package git-module is a Go module for Git access through shell commands.
+Package cassie-git-module is a .NET standard 2.0 module for Git access through shell commands.
 
 ## Requirements
 * C# version must be at least 8.0.
